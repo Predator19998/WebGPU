@@ -1,0 +1,48 @@
+# Ignore build artifacts and executables
+/build/
+/bin/
+/lib/
+*.exe
+*.out
+
+# Ignore CMake generated files
+CMakeFiles/
+CMakeCache.txt
+cmake_install.cmake
+CTestTestfile.cmake
+Makefile
+
+# Ignore IDE files
+.vscode/
+.idea/
+*.suo
+*.user
+*.sln
+*.vcxproj
+*.vcxproj.filters
+*.vcxproj.user
+
+# Ignore compiled object files
+*.o
+*.obj
+
+# Ignore dependency files
+*.d
+
+# Ignore any generated documentation
+/doc/
+
+# Ignore any logs or temporary files
+*.log
+*.tmp
+
+# Ignore any package files
+*.tar.gz
+*.zip
+*.gz
+*.bz2
+*.7z
+
+# Ignore any files created by the system
+.DS_Store
+Thumbs.db
