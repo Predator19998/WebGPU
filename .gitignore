@@ -46,3 +46,5 @@ Makefile
 # Ignore any files created by the system
 .DS_Store
 Thumbs.db
+dawn
+/cmake-build-debug/
