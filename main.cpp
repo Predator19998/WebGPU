@@ -3,6 +3,8 @@
 #include <webgpu/webgpu_glfw.h>
 #include <iostream>
 
+#define UNUSED(x) (void)(x)
+
 const uint32_t kWidth = 512;
 const uint32_t kHeight = 512;
 
@@ -16,6 +18,8 @@ void GetDevice(void (*callback)(wgpu::Device)) {
         nullptr,
         [](WGPURequestAdapterStatus status, WGPUAdapter cAdapter,
             const char* message, void* userdata) {
+
+            UNUSED(status); UNUSED(message); UNUSED(status);
                 if (status != WGPURequestAdapterStatus_Success) {
                     exit(0);
                 }
@@ -24,9 +28,12 @@ void GetDevice(void (*callback)(wgpu::Device)) {
                     nullptr,
                     [](WGPURequestDeviceStatus status, WGPUDevice cDevice,
                         const char* message, void* userdata) {
+                        UNUSED(status);
+                        UNUSED(message);
                             wgpu::Device device = wgpu::Device::Acquire(cDevice);
                             device.SetUncapturedErrorCallback(
                                 [](WGPUErrorType type, const char* message, void* userdata) {
+                                    UNUSED(userdata);
                                     std::cout << "Error: " << type << " - message: " << message;
                                 },
                                 nullptr);
@@ -44,7 +51,8 @@ void SetupSwapChain(wgpu::Surface surface) {
         .format = wgpu::TextureFormat::BGRA8Unorm,
         .width = kWidth,
         .height = kHeight,
-        .presentMode = wgpu::PresentMode::Fifo };
+        .presentMode = wgpu::PresentMode::Fifo
+    };
     swapChain = device.CreateSwapChain(surface, &scDesc);
 }
 
@@ -91,7 +99,8 @@ void Render() {
     wgpu::RenderPassColorAttachment attachment{
     .view = swapChain.GetCurrentTextureView(),
     .loadOp = wgpu::LoadOp::Clear,
-    .storeOp = wgpu::StoreOp::Store };
+    .storeOp = wgpu::StoreOp::Store,
+    .clearValue = wgpu::Color{ 0, 0, 0, 1.0 } };
 
     wgpu::RenderPassDescriptor renderpass{ .colorAttachmentCount = 1,
                                           .colorAttachments = &attachment };
@@ -108,12 +117,19 @@ void Render() {
 
 void Start() {
     if (!glfwInit()) {
+        std::cerr << "Could not initialize GLFW!" << std::endl;
         return;
     }
 
     glfwWindowHint(GLFW_CLIENT_API, GLFW_NO_API);
     GLFWwindow* window =
         glfwCreateWindow(kWidth, kHeight, "WebGPU", nullptr, nullptr);
+
+    if (!window) {
+        std::cerr << "Could not open window!" << std::endl;
+        glfwTerminate();
+        return;
+    }
 
     wgpu::Surface surface =
         wgpu::glfw::CreateSurfaceForWindow(instance, window);
