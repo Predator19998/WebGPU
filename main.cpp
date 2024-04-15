@@ -16,16 +16,18 @@ wgpu::Device device;
 wgpu::Buffer buffer1;
 wgpu::Buffer buffer2;
 wgpu::Buffer vertexBuffer;
+wgpu::BufferDescriptor bufferDesc;
+wgpu::VertexBufferLayout vertexBufferLayout;
+wgpu::VertexAttribute vertexAttrib;
 
 std::vector<float> vertexData = {
-        // x0, y0
-        -0.5, -0.5,
+    -0.5, -0.5,
+    +0.5, -0.5,
+    +0.0, +0.5,
 
-        // x1, y1
-        +0.5, -0.5,
-
-        // x2, y2
-        +0.0, +0.5
+    -0.55f, -0.5,
+    -0.05f, +0.5,
+    -0.55f, +0.5
 };
 int vertexCount = static_cast<int>(vertexData.size() / 2);
 
@@ -102,25 +104,32 @@ void SetupSwapChain(wgpu::Surface surface) {
 
 const char shaderCode[] = R"(
     @vertex
-    fn vs_main(@builtin(vertex_index) in_vertex_index: u32) -> @builtin(position) vec4f {
-        var p = vec2f(0.0, 0.0);
-        if (in_vertex_index == 0u) {
-            p = vec2f(-0.5, -0.5);
-        } else if (in_vertex_index == 1u) {
-            p = vec2f(0.5, -0.5);
-        } else {
-            p = vec2f(0.0, 0.5);
-        }
-        return vec4f(p, 0.0, 1.0);
-    }
-
-    @fragment
     fn vs_main(@location(0) in_vertex_position: vec2f) -> @builtin(position) vec4f {
         return vec4f(in_vertex_position, 0.0, 1.0);
     }
+
+    @fragment
+    fn fs_main() -> @location(0) vec4f {
+        return vec4f(0.0, 0.4, 1.0, 1.0);
+    }
+
 )";
 
 void CreateRenderPipeline() {
+
+    // == Per attribute ==
+    // Corresponds to @location(...)
+    vertexAttrib.shaderLocation = 0;
+    // Means vec2f in the shader
+    vertexAttrib.format = wgpu::VertexFormat::Float32x2;
+    // Index of the first element
+    vertexAttrib.offset = 0;
+
+    vertexBufferLayout.attributeCount = 1;
+    vertexBufferLayout.attributes = &vertexAttrib;
+    vertexBufferLayout.arrayStride = 2 * sizeof(float);
+    vertexBufferLayout.stepMode = wgpu::VertexStepMode::Vertex;
+
     wgpu::ShaderModuleWGSLDescriptor wgslDesc{};
     wgslDesc.code = shaderCode;
 
@@ -137,8 +146,16 @@ void CreateRenderPipeline() {
                                       .targets = &colorTargetState };
 
     wgpu::RenderPipelineDescriptor descriptor{
-        .vertex = {.module = shaderModule},
-        .fragment = &fragmentState };
+        .vertex = {.module = shaderModule ,
+                    .bufferCount = 1,
+                    .buffers = &vertexBufferLayout
+                    },
+        .primitive = {.topology = wgpu::PrimitiveTopology::TriangleList,
+                        .frontFace = wgpu::FrontFace::CCW,
+                        .cullMode = wgpu::CullMode::None
+                    },
+        .fragment = &fragmentState,
+        };
     pipeline = device.CreateRenderPipeline(&descriptor);
 }
 
@@ -163,7 +180,6 @@ void GetBuffer() {
     buffer2 = device.CreateBuffer(&bufferDesc2);
 
     // Create vertex buffer
-    wgpu::BufferDescriptor bufferDesc;
     bufferDesc.size = vertexData.size() * sizeof(float);
     bufferDesc.usage = wgpu::BufferUsage::CopyDst | wgpu::BufferUsage::Vertex;
     bufferDesc.mappedAtCreation = false;
@@ -185,21 +201,21 @@ void Render() {
     device.GetQueue().WriteBuffer(vertexBuffer, 0, vertexData.data(), bufferDesc.size);
 
 
-    auto onBuffer2Mapped = [](WGPUBufferMapAsyncStatus status, void* pUserData) {
-        auto* buffer = static_cast<wgpu::Buffer*>(pUserData);
-        // std::cout << "Buffer 2 mapped with status " << status << std::endl;
-        if (static_cast<wgpu::BufferMapAsyncStatus>(status) != wgpu::BufferMapAsyncStatus::Success) return;
+    //auto onBuffer2Mapped = [](WGPUBufferMapAsyncStatus status, void* pUserData) {
+    //    auto* buffer = static_cast<wgpu::Buffer*>(pUserData);
+    //    // std::cout << "Buffer 2 mapped with status " << status << std::endl;
+    //    if (static_cast<wgpu::BufferMapAsyncStatus>(status) != wgpu::BufferMapAsyncStatus::Success) return;
 
-        // Get a pointer to wherever the driver mapped the GPU memory to the RAM
-        // uint8_t* bufferData = (uint8_t*)buffer->GetConstMappedRange(0, 16);
+    //    // Get a pointer to wherever the driver mapped the GPU memory to the RAM
+    //    // uint8_t* bufferData = (uint8_t*)buffer->GetConstMappedRange(0, 16);
 
-        // [...] (Do stuff with bufferData)
+    //    // [...] (Do stuff with bufferData)
 
-        // Then do not forget to unmap the memory
-        buffer->Unmap();
-    };
+    //    // Then do not forget to unmap the memory
+    //    buffer->Unmap();
+    //};
 
-    buffer2.MapAsync(wgpu::MapMode::Read, 0, 16, onBuffer2Mapped, &buffer2);
+    //buffer2.MapAsync(wgpu::MapMode::Read, 0, 16, onBuffer2Mapped, &buffer2);
 
     wgpu::RenderPassColorAttachment attachment{
     .view = swapChain.GetCurrentTextureView(),
@@ -210,14 +226,18 @@ void Render() {
     wgpu::RenderPassDescriptor renderpass{ .colorAttachmentCount = 1,
                                           .colorAttachments = &attachment };
 
-    wgpu::CommandEncoder encoder = device.CreateCommandEncoder();
-    encoder.CopyBufferToBuffer(buffer1, 0, buffer2, 0, 16);
+    wgpu::CommandEncoderDescriptor commandEncoderDesc;
+    commandEncoderDesc.label = "Command Encoder";
+    wgpu::CommandEncoder encoder = device.CreateCommandEncoder(&commandEncoderDesc);
     wgpu::RenderPassEncoder pass = encoder.BeginRenderPass(&renderpass);
     pass.SetPipeline(pipeline);
-    pass.Draw(3);
+    pass.SetVertexBuffer(0, vertexBuffer, 0, vertexData.size() * sizeof(float));
+    pass.Draw(vertexCount, 1, 0, 0);
     pass.End();
-    wgpu::CommandBuffer commands = encoder.Finish();
-    device.GetQueue().Submit(1, &commands);
+    wgpu::CommandBufferDescriptor cmdBufferDescriptor;
+    cmdBufferDescriptor.label = "Command buffer";
+    wgpu::CommandBuffer commands = encoder.Finish(&cmdBufferDescriptor);
+    device.GetQueue().Submit(1,&commands);
 }
 
 
@@ -260,6 +280,5 @@ int main() {
         Start();
         });
 
-    buffer1.Destroy();
-    buffer2.Destroy();
+    vertexBuffer.Destroy();
 }
