@@ -1,6 +1,7 @@
 #include <../third_party/glfw/include/GLFW/glfw3.h>
 #include <webgpu/webgpu_cpp.h>
 #include <webgpu/webgpu_glfw.h>
+#include <webgpu/webgpu.h>
 #include <iostream>
 
 #define UNUSED(x) (void)(x)
@@ -12,8 +13,31 @@ wgpu::SwapChain swapChain;
 wgpu::RenderPipeline pipeline;
 wgpu::Instance instance;
 wgpu::Device device;
+wgpu::Buffer buffer1;
+wgpu::Buffer buffer2;
+wgpu::Buffer vertexBuffer;
+
+std::vector<float> vertexData = {
+        // x0, y0
+        -0.5, -0.5,
+
+        // x1, y1
+        +0.5, -0.5,
+
+        // x2, y2
+        +0.0, +0.5
+};
+int vertexCount = static_cast<int>(vertexData.size() / 2);
+
+void setDefault(wgpu::Limits &limits) {
+    limits.maxTextureDimension1D = 0;
+    limits.maxTextureDimension2D = 0;
+    limits.maxTextureDimension3D = 0;
+    // [...] Set everything to 0 to mean "no limit"
+}
 
 void GetDevice(void (*callback)(wgpu::Device)) {
+
     instance.RequestAdapter(
         nullptr,
         [](WGPURequestAdapterStatus status, WGPUAdapter cAdapter,
@@ -24,8 +48,28 @@ void GetDevice(void (*callback)(wgpu::Device)) {
                     exit(0);
                 }
                 wgpu::Adapter adapter = wgpu::Adapter::Acquire(cAdapter);
+
+            wgpu::DeviceDescriptor deviceDesc;
+            wgpu::SupportedLimits supportedLimits;
+            // Don't forget to = Default
+            wgpu::RequiredLimits requiredLimits{};
+            setDefault(requiredLimits.limits);
+            // We use at most 1 vertex attribute for now
+            requiredLimits.limits.maxVertexAttributes = 1;
+            // We should also tell that we use 1 vertex buffers
+            requiredLimits.limits.maxVertexBuffers = 1;
+            // Maximum size of a buffer is 6 vertices of 2 float each
+            requiredLimits.limits.maxBufferSize = 6 * 2 * sizeof(float);
+            // Maximum stride between 2 consecutive vertices in the vertex buffer
+            requiredLimits.limits.maxVertexBufferArrayStride = 2 * sizeof(float);
+            // This must be set even if we do not use storage buffers for now
+            requiredLimits.limits.minStorageBufferOffsetAlignment = supportedLimits.limits.minStorageBufferOffsetAlignment;
+            // This must be set even if we do not use uniform buffers for now
+            requiredLimits.limits.minUniformBufferOffsetAlignment = supportedLimits.limits.minUniformBufferOffsetAlignment;
+            deviceDesc.requiredLimits = &requiredLimits;
+
                 adapter.RequestDevice(
-                    nullptr,
+                        &deviceDesc,
                     [](WGPURequestDeviceStatus status, WGPUDevice cDevice,
                         const char* message, void* userdata) {
                         UNUSED(status);
@@ -71,8 +115,8 @@ const char shaderCode[] = R"(
     }
 
     @fragment
-    fn fs_main() -> @location(0) vec4f {
-        return vec4f(0.0, 0.4, 1.0, 1.0);
+    fn vs_main(@location(0) in_vertex_position: vec2f) -> @builtin(position) vec4f {
+        return vec4f(in_vertex_position, 0.0, 1.0);
     }
 )";
 
@@ -103,8 +147,60 @@ void InitGraphics(wgpu::Surface surface) {
     CreateRenderPipeline();
 }
 
+void GetBuffer() {
+//    wgpu::BufferDescriptor bufferDesc;
+//    bufferDesc.label = "Some GPU-side data buffer";
+//    bufferDesc.usage = wgpu::BufferUsage::CopyDst | wgpu::BufferUsage::CopySrc;
+//    bufferDesc.size = 16;
+//    bufferDesc.mappedAtCreation = false;
+//    buffer1 = device.CreateBuffer(&bufferDesc);
+
+    wgpu::BufferDescriptor bufferDesc2;
+    bufferDesc2.label = "Some GPU-side data buffer 2";
+    bufferDesc2.usage = wgpu::BufferUsage::CopyDst | wgpu::BufferUsage::MapRead;
+    bufferDesc2.size = 16;
+    bufferDesc2.mappedAtCreation = false;
+    buffer2 = device.CreateBuffer(&bufferDesc2);
+
+    // Create vertex buffer
+    wgpu::BufferDescriptor bufferDesc;
+    bufferDesc.size = vertexData.size() * sizeof(float);
+    bufferDesc.usage = wgpu::BufferUsage::CopyDst | wgpu::BufferUsage::Vertex;
+    bufferDesc.mappedAtCreation = false;
+    vertexBuffer = device.CreateBuffer(&bufferDesc);
+
+}
+
 void Render() {
     // Main Render Block.
+
+    GetBuffer();
+
+    // Create some CPU-side data buffer (of size 16 bytes)
+    std::vector<uint8_t> numbers(16);
+    for (uint8_t i = 0; i < 16; ++i) numbers[i] = i;
+
+    // Copy this from `numbers` (RAM) to `buffer1` (VRAM)
+    //device.GetQueue().WriteBuffer(buffer1, 0, numbers.data(), numbers.size());
+    device.GetQueue().WriteBuffer(vertexBuffer, 0, vertexData.data(), bufferDesc.size);
+
+
+    auto onBuffer2Mapped = [](WGPUBufferMapAsyncStatus status, void* pUserData) {
+        auto* buffer = static_cast<wgpu::Buffer*>(pUserData);
+        // std::cout << "Buffer 2 mapped with status " << status << std::endl;
+        if (static_cast<wgpu::BufferMapAsyncStatus>(status) != wgpu::BufferMapAsyncStatus::Success) return;
+
+        // Get a pointer to wherever the driver mapped the GPU memory to the RAM
+        // uint8_t* bufferData = (uint8_t*)buffer->GetConstMappedRange(0, 16);
+
+        // [...] (Do stuff with bufferData)
+
+        // Then do not forget to unmap the memory
+        buffer->Unmap();
+    };
+
+    buffer2.MapAsync(wgpu::MapMode::Read, 0, 16, onBuffer2Mapped, &buffer2);
+
     wgpu::RenderPassColorAttachment attachment{
     .view = swapChain.GetCurrentTextureView(),
     .loadOp = wgpu::LoadOp::Clear,
@@ -115,6 +211,7 @@ void Render() {
                                           .colorAttachments = &attachment };
 
     wgpu::CommandEncoder encoder = device.CreateCommandEncoder();
+    encoder.CopyBufferToBuffer(buffer1, 0, buffer2, 0, 16);
     wgpu::RenderPassEncoder pass = encoder.BeginRenderPass(&renderpass);
     pass.SetPipeline(pipeline);
     pass.Draw(3);
@@ -146,6 +243,8 @@ void Start() {
     InitGraphics(surface);
 
     while (!glfwWindowShouldClose(window)) {
+        device.Tick();
+        device.Tick();
         glfwPollEvents();
         Render();
         swapChain.Present();
@@ -160,4 +259,7 @@ int main() {
         device = dev;
         Start();
         });
+
+    buffer1.Destroy();
+    buffer2.Destroy();
 }
