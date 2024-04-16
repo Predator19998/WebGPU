@@ -6,8 +6,8 @@
 
 #define UNUSED(x) (void)(x)
 
-const uint32_t kWidth = 512;
-const uint32_t kHeight = 512;
+const uint32_t kWidth = 640;
+const uint32_t kHeight = 480;
 
 wgpu::SwapChain swapChain;
 wgpu::RenderPipeline pipeline;
@@ -16,20 +16,29 @@ wgpu::Device device;
 wgpu::Buffer buffer1;
 wgpu::Buffer buffer2;
 wgpu::Buffer vertexBuffer;
+wgpu::Buffer indexBuffer;
 wgpu::BufferDescriptor bufferDesc;
 wgpu::VertexBufferLayout vertexBufferLayout;
-wgpu::VertexAttribute vertexAttrib;
+std::vector<wgpu::VertexAttribute> vertexAttribs(2);
 
 std::vector<float> vertexData = {
-    -0.5, -0.5,
-    +0.5, -0.5,
-    +0.0, +0.5,
-
-    -0.55f, -0.5,
-    -0.05f, +0.5,
-    -0.55f, +0.5
+    // x,   y,     r,   g,   b
+    -0.5, -0.5,   1.0, 0.0, 0.0,
+    +0.5, -0.5,   0.0, 1.0, 0.0,
+    +0.5, +0.5,   0.0, 0.0, 1.0,
+    -0.5, +0.5,   1.0, 1.0, 0.0
 };
-int vertexCount = static_cast<int>(vertexData.size() / 2);
+
+// This is a list of indices referencing positions in the pointData
+std::vector<uint16_t> indexData = {
+    0, 1, 2, // Triangle #0
+    0, 2, 3  // Triangle #1
+};
+
+int indexCount = static_cast<int>(indexData.size());
+
+// We now divide the vector size by 5 fields.
+int vertexCount = static_cast<int>(vertexData.size() / 5);
 
 void setDefault(wgpu::Limits &limits) {
     limits.maxTextureDimension1D = 0;
@@ -57,13 +66,13 @@ void GetDevice(void (*callback)(wgpu::Device)) {
             wgpu::RequiredLimits requiredLimits{};
             setDefault(requiredLimits.limits);
             // We use at most 1 vertex attribute for now
-            requiredLimits.limits.maxVertexAttributes = 1;
+            requiredLimits.limits.maxVertexAttributes = 2;
             // We should also tell that we use 1 vertex buffers
             requiredLimits.limits.maxVertexBuffers = 1;
             // Maximum size of a buffer is 6 vertices of 2 float each
-            requiredLimits.limits.maxBufferSize = 6 * 2 * sizeof(float);
+            requiredLimits.limits.maxBufferSize = 6 * 5 * sizeof(float);
             // Maximum stride between 2 consecutive vertices in the vertex buffer
-            requiredLimits.limits.maxVertexBufferArrayStride = 2 * sizeof(float);
+            requiredLimits.limits.maxVertexBufferArrayStride = 5 * sizeof(float);
             // This must be set even if we do not use storage buffers for now
             requiredLimits.limits.minStorageBufferOffsetAlignment = supportedLimits.limits.minStorageBufferOffsetAlignment;
             // This must be set even if we do not use uniform buffers for now
@@ -103,31 +112,56 @@ void SetupSwapChain(wgpu::Surface surface) {
 }
 
 const char shaderCode[] = R"(
+    struct VertexInput {
+        @location(0) position: vec2f,
+        @location(1) color: vec3f,
+    };
+
+    /**
+     * A structure with fields labeled with builtins and locations can also be used
+     * as *output* of the vertex shader, which is also the input of the fragment
+     * shader.
+     */
+    struct VertexOutput {
+        @builtin(position) position: vec4f,
+        // The location here does not refer to a vertex attribute, it just means
+        // that this field must be handled by the rasterizer.
+        // (It can also refer to another field of another struct that would be used
+        // as input to the fragment shader.)
+        @location(0) color: vec3f,
+    };
+
     @vertex
-    fn vs_main(@location(0) in_vertex_position: vec2f) -> @builtin(position) vec4f {
-        return vec4f(in_vertex_position, 0.0, 1.0);
+    fn vs_main(in: VertexInput) -> VertexOutput {
+        var out: VertexOutput;
+        let ratio = 640.0 / 480.0; // The width and height of the target surface
+        out.position = vec4f(in.position.x, in.position.y * ratio, 0.0, 1.0);
+        out.color = in.color; // forward to the fragment shader
+        return out;
     }
 
     @fragment
-    fn fs_main() -> @location(0) vec4f {
-        return vec4f(0.0, 0.4, 1.0, 1.0);
+    fn fs_main(in: VertexOutput) -> @location(0) vec4f {
+        return vec4f(in.color, 1.0);
     }
-
 )";
 
 void CreateRenderPipeline() {
 
-    // == Per attribute ==
-    // Corresponds to @location(...)
-    vertexAttrib.shaderLocation = 0;
-    // Means vec2f in the shader
-    vertexAttrib.format = wgpu::VertexFormat::Float32x2;
-    // Index of the first element
-    vertexAttrib.offset = 0;
+    // Position attribute
+    vertexAttribs[0].shaderLocation = 0;
+    vertexAttribs[0].format = wgpu::VertexFormat::Float32x2;
+    vertexAttribs[0].offset = 0;
 
-    vertexBufferLayout.attributeCount = 1;
-    vertexBufferLayout.attributes = &vertexAttrib;
-    vertexBufferLayout.arrayStride = 2 * sizeof(float);
+    // Color attribute
+    vertexAttribs[1].shaderLocation = 1;
+    vertexAttribs[1].format = wgpu::VertexFormat::Float32x3; // different type!
+    vertexAttribs[1].offset = 2 * sizeof(float); // non null offset!
+
+    vertexBufferLayout.attributeCount = static_cast<uint32_t>(vertexAttribs.size());
+    vertexBufferLayout.attributes = vertexAttribs.data();
+
+    vertexBufferLayout.arrayStride = 5 * sizeof(float);
     vertexBufferLayout.stepMode = wgpu::VertexStepMode::Vertex;
 
     wgpu::ShaderModuleWGSLDescriptor wgslDesc{};
@@ -184,6 +218,14 @@ void GetBuffer() {
     bufferDesc.usage = wgpu::BufferUsage::CopyDst | wgpu::BufferUsage::Vertex;
     bufferDesc.mappedAtCreation = false;
     vertexBuffer = device.CreateBuffer(&bufferDesc);
+    device.GetQueue().WriteBuffer(vertexBuffer, 0, vertexData.data(), bufferDesc.size);
+
+    bufferDesc.size = indexData.size() * sizeof(uint16_t);
+    //bufferDesc.size = (bufferDesc.size + 3) & ~3;
+    bufferDesc.usage = wgpu::BufferUsage::CopyDst | wgpu::BufferUsage::Index;
+    bufferDesc.mappedAtCreation = false;
+    indexBuffer = device.CreateBuffer(&bufferDesc);
+    device.GetQueue().WriteBuffer(indexBuffer, 0, indexData.data(), bufferDesc.size);
 
 }
 
@@ -198,7 +240,7 @@ void Render() {
 
     // Copy this from `numbers` (RAM) to `buffer1` (VRAM)
     //device.GetQueue().WriteBuffer(buffer1, 0, numbers.data(), numbers.size());
-    device.GetQueue().WriteBuffer(vertexBuffer, 0, vertexData.data(), bufferDesc.size);
+  
 
 
     //auto onBuffer2Mapped = [](WGPUBufferMapAsyncStatus status, void* pUserData) {
@@ -232,7 +274,9 @@ void Render() {
     wgpu::RenderPassEncoder pass = encoder.BeginRenderPass(&renderpass);
     pass.SetPipeline(pipeline);
     pass.SetVertexBuffer(0, vertexBuffer, 0, vertexData.size() * sizeof(float));
-    pass.Draw(vertexCount, 1, 0, 0);
+    pass.SetIndexBuffer(indexBuffer, wgpu::IndexFormat::Uint16, 0, indexData.size() * sizeof(uint16_t));
+    /*pass.Draw(vertexCount, 1, 0, 0);*/
+    pass.DrawIndexed(indexCount, 1, 0, 0, 0);
     pass.End();
     wgpu::CommandBufferDescriptor cmdBufferDescriptor;
     cmdBufferDescriptor.label = "Command buffer";
