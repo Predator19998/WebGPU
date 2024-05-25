@@ -11,9 +11,18 @@
 #include <fstream>
 #include <sstream>
 #include <string>
+#include <array>
 
 namespace fs = std::filesystem;
 using namespace wgpu;
+
+struct MyUniforms {
+	std::array<float, 4> color;
+	float time;
+	float _pad[3];
+};
+
+static_assert(sizeof(MyUniforms) % 16 == 0);
 
 bool loadGeometry(const fs::path& path, std::vector<float>& pointData, std::vector<uint16_t>& indexData) {
 	std::ifstream file(path);
@@ -237,26 +246,28 @@ int main (int, char**) {
 	pipelineDesc.multisample.alphaToCoverageEnabled = false;
 
 	BufferDescriptor bufferDesc;
-		// The buffer will only contain 1 float with the value of uTime
-	bufferDesc.size = sizeof(float);
+	// The buffer will only contain 1 float with the value of uTime
+	bufferDesc.size = sizeof(MyUniforms);
 	// Make sure to flag the buffer as BufferUsage::Uniform
 	bufferDesc.usage = BufferUsage::CopyDst | BufferUsage::Uniform;
 	bufferDesc.mappedAtCreation = false;
 	Buffer uniformBuffer = device.createBuffer(bufferDesc);
-	float currentTime = 1.0f;
-	queue.writeBuffer(uniformBuffer, 0, &currentTime, sizeof(float));
+	MyUniforms uniforms;
+	uniforms.time = 1.0f;
+	uniforms.color = { 0.0f, 1.0f, 0.4f, 1.0f };
+	queue.writeBuffer(uniformBuffer, 0, &uniforms, sizeof(MyUniforms));
 
 	BindGroupEntry binding{};
 	binding.binding = 0;
 	binding.buffer = uniformBuffer;
 	binding.offset = 0;
-	binding.size = sizeof(float);
+	binding.size = sizeof(MyUniforms);
 
 	BindGroupLayoutEntry bindingLayout = Default;
 	bindingLayout.binding = 0;
-	bindingLayout.visibility = ShaderStage::Vertex;
+	bindingLayout.visibility = ShaderStage::Vertex | ShaderStage::Fragment;
 	bindingLayout.buffer.type = BufferBindingType::Uniform;
-	bindingLayout.buffer.minBindingSize = sizeof(float);
+	bindingLayout.buffer.minBindingSize = sizeof(MyUniforms);
 
 	// Create a bind group layout
 	BindGroupLayoutDescriptor bindGroupLayoutDesc{};
@@ -343,8 +354,10 @@ int main (int, char**) {
 		renderPass.setIndexBuffer(indexBuffer, IndexFormat::Uint16, 0, indexData.size() * sizeof(uint16_t));
 
 		// Update uniform buffer
-		float t = static_cast<float>(glfwGetTime());
-		queue.writeBuffer(uniformBuffer, 0, &t, sizeof(float));
+		uniforms.color = { 1.0f, 0.5f, 0.0f, 1.0f };
+		uniforms.time = static_cast<float>(glfwGetTime());
+		queue.writeBuffer(uniformBuffer, offsetof(MyUniforms, color), &uniforms.color, sizeof(MyUniforms::color));
+		queue.writeBuffer(uniformBuffer, offsetof(MyUniforms, time), &uniforms.time, sizeof(MyUniforms::time));
 
 		renderPass.setBindGroup(0, bindGroup, 0, nullptr);
 		renderPass.drawIndexed(indexCount, 1, 0, 0, 0);
