@@ -24,6 +24,11 @@ struct MyUniforms {
 
 static_assert(sizeof(MyUniforms) % 16 == 0);
 
+uint32_t ceilToNextMultiple(uint32_t value, uint32_t step) {
+	uint32_t divide_and_ceil = value / step + (value % step == 0 ? 0 : 1);
+	return step * divide_and_ceil;
+}
+
 bool loadGeometry(const fs::path& path, std::vector<float>& pointData, std::vector<uint16_t>& indexData) {
 	std::ifstream file(path);
 	if (!file.is_open()) {
@@ -140,6 +145,7 @@ int main (int, char**) {
 	requiredLimits.limits.maxVertexBufferArrayStride = 5 * sizeof(float);
 	requiredLimits.limits.minStorageBufferOffsetAlignment = supportedLimits.limits.minStorageBufferOffsetAlignment;
 	requiredLimits.limits.minUniformBufferOffsetAlignment = supportedLimits.limits.minUniformBufferOffsetAlignment;
+	requiredLimits.limits.maxDynamicUniformBuffersPerPipelineLayout = 1;
 	requiredLimits.limits.maxInterStageShaderComponents = 3;
 
 	// We use at most 1 bind group for now
@@ -156,6 +162,14 @@ int main (int, char**) {
 	deviceDesc.defaultQueue.label = "The default queue";
 	Device device = adapter.requestDevice(deviceDesc);
 	std::cout << "Got device: " << device << std::endl;
+
+	device.getLimits(&supportedLimits);
+	Limits deviceLimits = supportedLimits.limits;
+
+	uint32_t uniformStride = ceilToNextMultiple(
+		(uint32_t)sizeof(MyUniforms),
+		(uint32_t)deviceLimits.minUniformBufferOffsetAlignment
+	);
 
 	// Add an error callback for more debug info
 	auto h = device.setUncapturedErrorCallback([](ErrorType type, char const* message) {
@@ -247,15 +261,20 @@ int main (int, char**) {
 
 	BufferDescriptor bufferDesc;
 	// The buffer will only contain 1 float with the value of uTime
-	bufferDesc.size = sizeof(MyUniforms);
+	bufferDesc.size = uniformStride + sizeof(MyUniforms);
 	// Make sure to flag the buffer as BufferUsage::Uniform
 	bufferDesc.usage = BufferUsage::CopyDst | BufferUsage::Uniform;
 	bufferDesc.mappedAtCreation = false;
 	Buffer uniformBuffer = device.createBuffer(bufferDesc);
 	MyUniforms uniforms;
+
 	uniforms.time = 1.0f;
 	uniforms.color = { 0.0f, 1.0f, 0.4f, 1.0f };
 	queue.writeBuffer(uniformBuffer, 0, &uniforms, sizeof(MyUniforms));
+
+	uniforms.time = -1.0f;
+	uniforms.color = { 1.0f, 1.0f, 1.0f, 0.7f };
+	queue.writeBuffer(uniformBuffer, uniformStride, &uniforms, sizeof(MyUniforms));
 
 	BindGroupEntry binding{};
 	binding.binding = 0;
@@ -268,6 +287,7 @@ int main (int, char**) {
 	bindingLayout.visibility = ShaderStage::Vertex | ShaderStage::Fragment;
 	bindingLayout.buffer.type = BufferBindingType::Uniform;
 	bindingLayout.buffer.minBindingSize = sizeof(MyUniforms);
+	bindingLayout.buffer.hasDynamicOffset = true;
 
 	// Create a bind group layout
 	BindGroupLayoutDescriptor bindGroupLayoutDesc{};
@@ -359,7 +379,14 @@ int main (int, char**) {
 		queue.writeBuffer(uniformBuffer, offsetof(MyUniforms, color), &uniforms.color, sizeof(MyUniforms::color));
 		queue.writeBuffer(uniformBuffer, offsetof(MyUniforms, time), &uniforms.time, sizeof(MyUniforms::time));
 
-		renderPass.setBindGroup(0, bindGroup, 0, nullptr);
+		uint32_t dynamicOffset = 0;
+		dynamicOffset = 0 * uniformStride;
+
+		renderPass.setBindGroup(0, bindGroup, 1, &dynamicOffset);
+		renderPass.drawIndexed(indexCount, 1, 0, 0, 0);
+
+		dynamicOffset = 1 * uniformStride;
+		renderPass.setBindGroup(0, bindGroup, 1, &dynamicOffset);
 		renderPass.drawIndexed(indexCount, 1, 0, 0, 0);
 
 		renderPass.end();
