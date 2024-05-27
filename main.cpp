@@ -1,6 +1,11 @@
 #include <glfw3webgpu.h>
 #include <GLFW/glfw3.h>
 
+#define GLM_FORCE_DEPTH_ZERO_TO_ONE
+#define GLM_FORCE_LEFT_HANDED
+#include <glm/ext.hpp>
+#include <glm/glm.hpp>
+
 #define WEBGPU_CPP_IMPLEMENTATION
 #include <webgpu/webgpu.hpp>
 
@@ -15,8 +20,16 @@
 
 namespace fs = std::filesystem;
 using namespace wgpu;
+using glm::mat4x4;
+using glm::vec4;
+using glm::vec3;
+
+constexpr float PI = 3.14159265358979323846f;
 
 struct MyUniforms {
+	mat4x4 projectionMatrix;
+	mat4x4 viewMatrix;
+	mat4x4 modelMatrix;
 	std::array<float, 4> color;
 	float time;
 	float _pad[3];
@@ -147,7 +160,7 @@ int main (int, char**) {
 	// We use at most 1 uniform buffer per stage
 	requiredLimits.limits.maxUniformBuffersPerShaderStage = 1;
 	// Uniform structs have a size of maximum 16 float (more than what we need)
-	requiredLimits.limits.maxUniformBufferBindingSize = 16 * 4;
+	requiredLimits.limits.maxUniformBufferBindingSize = 16 * 4 * sizeof(float);
 
 	// For the depth buffer, we enable textures (up to the size of the window):
 	requiredLimits.limits.maxTextureDimension1D = 480;
@@ -258,6 +271,29 @@ int main (int, char**) {
 	bufferDesc.mappedAtCreation = false;
 	Buffer uniformBuffer = device.createBuffer(bufferDesc);
 	MyUniforms uniforms;
+
+	float angle1 = 2.0f;
+	float angle2 = 3.0f * PI / 4.0f;
+	vec3 focalPoint(0.0, 0.0, -2.0);
+	float focalLength = 2.0;
+	float near = 0.01f;
+	float far = 100.0f;
+	float ratio = 640.0f / 480.0f;
+
+	mat4x4 M(1.0);
+	M = glm::rotate(M, angle1, vec3(0.0, 0.0, 1.0));
+	M = glm::translate(M, vec3(0.5, 0.0, 0.0));
+	M = glm::scale(M, vec3(0.3f));
+	uniforms.modelMatrix = M;
+
+	mat4x4 V(1.0);
+	V = glm::translate(V, -focalPoint);
+	V = glm::rotate(V, -angle2, vec3(1.0, 0.0, 0.0));
+	uniforms.viewMatrix = V;
+
+	float fov = 2 * glm::atan(1 / focalLength);
+	uniforms.projectionMatrix = glm::perspective(fov, ratio, near, far);
+
 	uniforms.time = 1.0f;
 	uniforms.color = { 0.0f, 1.0f, 0.4f, 1.0f };
 	queue.writeBuffer(uniformBuffer, 0, &uniforms, sizeof(MyUniforms));
@@ -362,6 +398,17 @@ int main (int, char**) {
 	while (!glfwWindowShouldClose(window)) {
 		glfwPollEvents();
 
+		uniforms.time = static_cast<float>(glfwGetTime());
+		queue.writeBuffer(uniformBuffer, offsetof(MyUniforms, time), &uniforms.time, sizeof(MyUniforms::time));
+
+		// Update view matrix
+		angle1 = uniforms.time;
+		M = glm::rotate(mat4x4(1.0), angle1, vec3(0.0, 0.0, 1.0));
+		M = glm::translate(M, vec3(0.5, 0.0, 0.0));
+		M = glm::scale(M, vec3(0.3f));
+		uniforms.modelMatrix = M;
+		queue.writeBuffer(uniformBuffer, offsetof(MyUniforms, modelMatrix), &uniforms.modelMatrix, sizeof(MyUniforms::modelMatrix));
+
 		TextureView nextTexture = swapChain.getCurrentTextureView();
 		if (!nextTexture) {
 			std::cerr << "Cannot acquire next swap chain texture" << std::endl;
@@ -412,10 +459,9 @@ int main (int, char**) {
 		renderPass.setIndexBuffer(indexBuffer, IndexFormat::Uint16, 0, indexData.size() * sizeof(uint16_t));
 
 		// Update uniform buffer
-		uniforms.color = { 1.0f, 0.5f, 0.0f, 1.0f };
-		uniforms.time = static_cast<float>(glfwGetTime());
-		queue.writeBuffer(uniformBuffer, offsetof(MyUniforms, color), &uniforms.color, sizeof(MyUniforms::color));
-		queue.writeBuffer(uniformBuffer, offsetof(MyUniforms, time), &uniforms.time, sizeof(MyUniforms::time));
+		//uniforms.color = { 1.0f, 0.5f, 0.0f, 1.0f };
+		//queue.writeBuffer(uniformBuffer, offsetof(MyUniforms, color), &uniforms.color, sizeof(MyUniforms::color));
+
 
 		renderPass.setBindGroup(0, bindGroup, 0, nullptr);
 		renderPass.drawIndexed(indexCount, 1, 0, 0, 0);
@@ -434,6 +480,11 @@ int main (int, char**) {
 
 		swapChain.present(); 
 	}
+
+	vertexBuffer.destroy();
+	vertexBuffer.release();
+	indexBuffer.destroy();
+	indexBuffer.release();
 
 	pipeline.release();
 	shaderModule.release();

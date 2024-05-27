@@ -15,6 +15,8 @@ add_executable(App
 	main.cpp
 )
 
+target_include_directories(App PRIVATE .)
+
 target_link_libraries(App PRIVATE glfw webgpu glfw3webgpu)
 
 set_target_properties(App PROPERTIES
@@ -47,4 +49,10 @@ else()
         RESOURCE_DIR="./resources"
     )
 endif()
+
+# Ignore a warning that GLM requires to bypass
+if (MSVC)
+	# Disable warning C4201: nonstandard extension used: nameless struct/union
+	target_compile_options(App PUBLIC /wd4201)
+endif (MSVC)
 
