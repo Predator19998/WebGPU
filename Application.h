@@ -31,6 +31,7 @@
 #include <webgpu/webgpu.hpp>
 #include <glm/glm.hpp>
 
+
 // Forward declare
 struct GLFWwindow;
 
@@ -55,6 +56,8 @@ public:
 	void onMouseMove(double xpos, double ypos);
 	void onMouseButton(int button, int action, int mods);
 	void onScroll(double xoffset, double yoffset);
+
+	void loadOBJFile();
 
 private:
     void buildSwapChain();
@@ -160,8 +163,10 @@ private:
 	wgpu::TextureFormat m_depthTextureFormat = wgpu::TextureFormat::Depth24Plus;
 	wgpu::SwapChainDescriptor m_swapChainDesc;
 
+	wgpu::BufferDescriptor bufferDesc;
 	MyUniforms m_uniforms;
 	CameraState m_cameraState;
 	DragState m_drag;
 	int m_vertexCount = 0;
+	wgpu::RenderPipelineDescriptor pipelineDesc;
 };

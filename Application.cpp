@@ -45,6 +45,8 @@
 #include <sstream>
 #include <string>
 #include <array>
+#include "tinyfiledialogs.h"
+#include "tinyfiledialogs.cpp"
 
 using namespace wgpu;
 using VertexAttributes = ResourceManager::VertexAttributes;
@@ -176,7 +178,6 @@ bool Application::onInit() {
 	std::cout << "Shader module: " << m_shaderModule << std::endl;
 
 	std::cout << "Creating render pipeline..." << std::endl;
-	RenderPipelineDescriptor pipelineDesc;
 
 	// Vertex fetch
 	std::vector<VertexAttribute> vertexAttribs(4);
@@ -258,7 +259,7 @@ bool Application::onInit() {
 
 	// Create binding layouts
 
-	std::vector<BindGroupLayoutEntry> bindingLayoutEntries(3, Default);
+	std::vector<BindGroupLayoutEntry> bindingLayoutEntries(1, Default);
 
 	// The uniform buffer binding that we already had
 	BindGroupLayoutEntry& bindingLayout = bindingLayoutEntries[0];
@@ -268,17 +269,17 @@ bool Application::onInit() {
 	bindingLayout.buffer.minBindingSize = sizeof(MyUniforms);
 
 	// The texture binding
-	BindGroupLayoutEntry& textureBindingLayout = bindingLayoutEntries[1];
-	textureBindingLayout.binding = 1;
-	textureBindingLayout.visibility = ShaderStage::Fragment;
-	textureBindingLayout.texture.sampleType = TextureSampleType::Float;
-	textureBindingLayout.texture.viewDimension = TextureViewDimension::_2D;
+	//BindGroupLayoutEntry& textureBindingLayout = bindingLayoutEntries[1];
+	//textureBindingLayout.binding = 1;
+	//textureBindingLayout.visibility = ShaderStage::Fragment;
+	//textureBindingLayout.texture.sampleType = TextureSampleType::Float;
+	//textureBindingLayout.texture.viewDimension = TextureViewDimension::_2D;
 
 	// The texture sampler binding
-	BindGroupLayoutEntry& samplerBindingLayout = bindingLayoutEntries[2];
-	samplerBindingLayout.binding = 2;
-	samplerBindingLayout.visibility = ShaderStage::Fragment;
-	samplerBindingLayout.sampler.type = SamplerBindingType::Filtering;
+	//BindGroupLayoutEntry& samplerBindingLayout = bindingLayoutEntries[2];
+	//samplerBindingLayout.binding = 2;
+	//samplerBindingLayout.visibility = ShaderStage::Fragment;
+	//samplerBindingLayout.sampler.type = SamplerBindingType::Filtering;
 
 	// Create a bind group layout
 	BindGroupLayoutDescriptor bindGroupLayoutDesc{};
@@ -328,7 +329,7 @@ bool Application::onInit() {
 	}
 
 	// Create vertex buffer
-	BufferDescriptor bufferDesc;
+	/*BufferDescriptor bufferDesc;*/
 	bufferDesc.size = vertexData.size() * sizeof(VertexAttributes);
 	bufferDesc.usage = BufferUsage::CopyDst | BufferUsage::Vertex;
 	bufferDesc.mappedAtCreation = false;
@@ -352,18 +353,18 @@ bool Application::onInit() {
 	m_queue.writeBuffer(m_uniformBuffer, 0, &m_uniforms, sizeof(MyUniforms));
 
 	// Create a binding
-	std::vector<BindGroupEntry> bindings(3);
+	std::vector<BindGroupEntry> bindings(1);
 
 	bindings[0].binding = 0;
 	bindings[0].buffer = m_uniformBuffer;
 	bindings[0].offset = 0;
 	bindings[0].size = sizeof(MyUniforms);
 
-	bindings[1].binding = 1;
-	bindings[1].textureView = m_textureView;
+	//bindings[1].binding = 1;
+	//bindings[1].textureView = m_textureView;
 
-	bindings[2].binding = 2;
-	bindings[2].sampler = m_sampler;
+	//bindings[1].binding = 1;
+	//bindings[1].sampler = m_sampler;
 
 	BindGroupDescriptor bindGroupDesc;
 	bindGroupDesc.layout = bindGroupLayout;
@@ -563,7 +564,7 @@ void Application::onMouseButton(int button, int action, [[maybe_unused]] int mod
 
 void Application::onScroll([[maybe_unused]] double xoffset, double yoffset) {
 	m_cameraState.zoom += m_drag.scrollSensitivity * (float)yoffset;
-	m_cameraState.zoom = glm::clamp(m_cameraState.zoom, -2.0f, 2.0f);
+	m_cameraState.zoom = glm::clamp(m_cameraState.zoom, -100.0f, 100.0f);
 	updateViewMatrix();
 }
 
@@ -683,24 +684,29 @@ void Application::updateGui(RenderPassEncoder renderPass) {
 		static bool show_another_window = false;
 		static ImVec4 clear_color = ImVec4(0.45f, 0.55f, 0.60f, 1.00f);
 
-		ImGui::Begin("Hello, world!");                                // Create a window called "Hello, world!" and append into it.
+		ImGui::Begin(" ");                                // Create a window called "Hello, world!" and append into it.
 
-		ImGui::Text("This is some useful text.");                     // Display some text (you can use a format strings too)
-		ImGui::Checkbox("Demo Window", &show_demo_window);            // Edit bools storing our window open/close state
-		ImGui::Checkbox("Another Window", &show_another_window);
+		if (ImGui::Button("Load OBJ File")) {
+			loadOBJFile();
+		}
 
-		ImGui::SliderFloat("float", &f, 0.0f, 1.0f);                  // Edit 1 float using a slider from 0.0f to 1.0f
-		ImGui::ColorEdit3("clear color", (float*)&clear_color);       // Edit 3 floats representing a color
+		//ImGui::Text("This is some useful text.");                     // Display some text (you can use a format strings too)
+		//ImGui::Checkbox("Demo Window", &show_demo_window);            // Edit bools storing our window open/close state
+		//ImGui::Checkbox("Another Window", &show_another_window);
 
-		if (ImGui::Button("Button"))                                  // Buttons return true when clicked (most widgets return true when edited/activated)
-			counter++;
-		ImGui::SameLine();
-		ImGui::Text("counter = %d", counter);
+		//ImGui::SliderFloat("float", &f, 0.0f, 1.0f);                  // Edit 1 float using a slider from 0.0f to 1.0f
+		//ImGui::ColorEdit3("clear color", (float*)&clear_color);       // Edit 3 floats representing a color
+
+		//if (ImGui::Button("Button"))                                  // Buttons return true when clicked (most widgets return true when edited/activated)
+		//	counter++;
+		//ImGui::SameLine();
+		//ImGui::Text("counter = %d", counter);
 
 		ImGuiIO& io = ImGui::GetIO();
-		ImGui::Text("Application average %.3f ms/frame (%.1f FPS)", 1000.0f / io.Framerate, io.Framerate);
+		//ImGui::Text("Application average %.3f ms/frame (%.1f FPS)", 1000.0f / io.Framerate, io.Framerate);
+		ImGui::Text("FPS : %.1f", io.Framerate);
 
-		ImGui::Text("Render pass duration on GPU: %s", m_perf.summary().c_str());
+		//ImGui::Text("Render pass duration on GPU: %s", m_perf.summary().c_str());
 		ImGui::End();
 	}
 
@@ -720,7 +726,7 @@ void Application::initBenchmark() {
 	m_timestampQueries = m_device.createQuerySet(querySetDesc);
 
 	// Create buffer to store timestamps
-	BufferDescriptor bufferDesc;
+	//BufferDescriptor bufferDesc;
 	bufferDesc.label = "timestamp resolve buffer";
 	bufferDesc.size = 2 * sizeof(uint64_t);
 	bufferDesc.usage = BufferUsage::QueryResolve | BufferUsage::CopySrc;
@@ -782,7 +788,7 @@ void Application::fetchTimestamps() {
 			uint64_t end = timestampData[1];
 			uint64_t nanoseconds = (end - begin);
 			float milliseconds = (float)nanoseconds * 1e-6;
-			std::cout << "Render pass took " << milliseconds << "ms" << std::endl;
+			//std::cout << "Render pass took " << milliseconds << "ms" << std::endl;
 			m_perf.add_sample(milliseconds * 1e-3);
 
 			m_timestampMapBuffer.unmap();
@@ -792,4 +798,46 @@ void Application::fetchTimestamps() {
 		// ongoing mapping operation.
 		m_timestampMapHandle.reset();
 	});
+}
+
+void Application::loadOBJFile() {
+	const char* filters[] = { "*.obj", "Wavefront Object (*.obj)" };
+	const int numFilters = sizeof(filters) / sizeof(filters[0]);
+	char* path = tinyfd_openFileDialog(
+		"Open OBJ File",
+		NULL,
+		numFilters,
+		filters,
+		"All Files (*.*)",
+		0);
+
+	if (path) {
+		std::cout << "Selected file:" << path << std::endl;
+
+		// Load mesh data from OBJ file
+		std::vector<VertexAttributes> vertexData;
+		bool success = ResourceManager::loadGeometryFromObj(path, vertexData);
+		if (!success) {
+			std::cerr << "Could not load geometry!" << std::endl;
+			return;
+		}
+
+		//// Release the previous buffer if necessary
+		//if (m_vertexBuffer != nullptr) {
+		//	m_vertexBuffer.destroy();
+		//	m_vertexBuffer.release();
+		//}
+
+		bufferDesc.size = vertexData.size() * sizeof(VertexAttributes);
+		bufferDesc.usage = BufferUsage::CopyDst | BufferUsage::Vertex;
+		bufferDesc.mappedAtCreation = false;
+
+		m_vertexBuffer = m_device.createBuffer(bufferDesc);
+		m_queue.writeBuffer(m_vertexBuffer, 0, vertexData.data(), bufferDesc.size);
+
+		m_vertexCount = static_cast<int>(vertexData.size());
+	}
+	else {
+		std::cout << "No file selected.\n" << std::endl;
+	}
 }
